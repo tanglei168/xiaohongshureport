@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_path: Path = Path(".data/xhs_report.db")
     browser_profile_path: Path = Path(".data/xhs-profile")
+    browser_storage_state_path: Path = Path(".data/xhs-storage-state.json")
     reports_path: Path = Path("reports")
     debug_path: Path = Path(".debug")
 
@@ -59,6 +60,7 @@ class Settings(BaseSettings):
 
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.browser_profile_path.mkdir(parents=True, exist_ok=True)
+        self.browser_storage_state_path.parent.mkdir(parents=True, exist_ok=True)
         self.reports_path.mkdir(parents=True, exist_ok=True)
         self.debug_path.mkdir(parents=True, exist_ok=True)
 

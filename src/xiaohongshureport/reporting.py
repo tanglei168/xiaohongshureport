@@ -135,7 +135,15 @@ def build_report(
     earliest = [_note_fact(note, account.follower_count) for note in dated[:20]]
     by_likes = sorted(notes, key=lambda note: note.like_count or -1, reverse=True)[:20]
     by_collections = sorted(notes, key=lambda note: note.collect_count or -1, reverse=True)[:20]
-    by_engagement = sorted(notes, key=lambda note: note.total_engagement, reverse=True)[:20]
+    by_interaction_rate = sorted(
+        notes,
+        key=lambda note: (
+            note.total_engagement / account.follower_count
+            if account.follower_count and account.follower_count > 0
+            else -1
+        ),
+        reverse=True,
+    )[:20]
 
     first_observed = []
     for term in PRODUCT_TERMS:
@@ -191,8 +199,8 @@ def build_report(
         "top_notes": {
             "by_likes": [_note_fact(note, account.follower_count) for note in by_likes],
             "by_collections": [_note_fact(note, account.follower_count) for note in by_collections],
-            "by_total_engagement": [
-                _note_fact(note, account.follower_count) for note in by_engagement
+            "by_interaction_rate": [
+                _note_fact(note, account.follower_count) for note in by_interaction_rate
             ],
         },
         "first_observed_product_terms": first_observed,
@@ -280,10 +288,12 @@ def render_markdown(report: dict[str, object]) -> str:
         lines.append(f"| {item['month']} | {shares or '无 seed 命中'} |")
 
     lines.extend(["", "## 爆款", ""])
+    lines.append("互动率按当前采集到的单篇互动总数 ÷ 当前账号粉丝数计算，不代表笔记发布时互动率。")
+    lines.append("")
     for title, key in (
         ("按点赞 Top 20", "by_likes"),
         ("按收藏 Top 20", "by_collections"),
-        ("按总互动 Top 20", "by_total_engagement"),
+        ("按互动率 Top 20", "by_interaction_rate"),
     ):
         lines.extend(
             [
@@ -332,6 +342,10 @@ def render_markdown(report: dict[str, object]) -> str:
     for item in report["publishing_rhythm"]["statistical_phases"]:
         phase_prefix = f"| {item['month']} | {item['note_count']}"
         lines.append(f"{phase_prefix} | {item['statistical_label']} | {item['rule']} |")
+
+    lines.extend(["", "### 按周发文数量", "", "| ISO 周 | 笔记数 |", "| --- | ---: |"])
+    for week, count in report["publishing_rhythm"]["weekly_counts"].items():
+        lines.append(f"| {week} | {count} |")
 
     lines.extend(["", "## 关键词关系", ""])
     if report["keyword_relations"]:

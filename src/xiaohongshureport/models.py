@@ -59,6 +59,7 @@ class Note(FactModel):
 class NoteCard(FactModel):
     note: Note
     account: Account | None = None
+    navigation_url: str | None = Field(default=None, repr=False)
 
 
 class AccountKeywordRelation(FactModel):

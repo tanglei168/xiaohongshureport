@@ -1,8 +1,10 @@
 """Playwright persistent browser session without cookie extraction or stealth behavior."""
 
+import json
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 from loguru import logger
 from playwright.sync_api import BrowserContext, Error, Page, Playwright, sync_playwright
@@ -37,11 +39,31 @@ def persistent_context(settings: Settings, *, headed: bool = True) -> Iterator[B
             viewport={"width": 1440, "height": 1000},
             locale="zh-CN",
         )
+        _restore_storage_state(context, settings.browser_storage_state_path)
         yield context
     finally:
         if context is not None:
-            context.close()
+            try:
+                context.storage_state(path=settings.browser_storage_state_path)
+            except (Error, OSError) as error:
+                logger.warning("本地 browser storage state 无法保存：{}", type(error).__name__)
+            finally:
+                context.close()
         playwright.stop()
+
+
+def _restore_storage_state(context: BrowserContext, path: Path) -> None:
+    """Restore project-local browser state without logging or exporting its values."""
+
+    if not path.exists():
+        return
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        cookies = state.get("cookies", [])
+        if cookies:
+            context.add_cookies(cookies)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError) as error:
+        logger.warning("本地 browser storage state 无法恢复，将重新登录：{}", type(error).__name__)
 
 
 def raise_if_platform_blocked(page: Page) -> None:
@@ -56,6 +78,17 @@ def raise_if_platform_blocked(page: Page) -> None:
         raise PlatformBlockedError(f"小红书明确阻止当前访问：{body[:160].strip()}")
     if any(marker in body for marker in ("请完成验证", "滑块验证", "安全验证")) or "captcha" in url:
         raise PlatformBlockedError("小红书要求验证码，请在正常页面中人工处理后再运行")
+
+
+def note_page_is_unavailable(page: Page) -> bool:
+    """Identify an explicit removed/unavailable note response without treating it as data."""
+
+    if "/404" in page.url and "error_code=300031" in page.url:
+        return True
+    try:
+        return "当前笔记暂时无法浏览" in page.locator("body").inner_text(timeout=3_000)
+    except (Error, PlaywrightTimeoutError):
+        return False
 
 
 def has_login_session(page: Page) -> bool:
@@ -104,6 +137,14 @@ def wait_for_page_ready(page: Page, timeout_seconds: float = 20) -> None:
             stable_checks = 0
         previous_url = current_url
         page.wait_for_timeout(500)
+    try:
+        if page.evaluate(
+            "document.readyState === 'interactive' || document.readyState === 'complete'"
+        ):
+            logger.debug("SPA URL 持续变化，但 DOM 已可用，继续后续页面检查")
+            return
+    except Error:
+        pass
     raise PlaywrightTimeoutError("页面在超时时间内未完成导航")
 
 
@@ -132,7 +173,11 @@ def login(settings: Settings) -> None:
             raise_if_platform_blocked(page)
             if has_login_session(page):
                 page.wait_for_timeout(1500)
-                logger.success("登录成功，session 已保存在 {}", settings.browser_profile_path)
+                logger.success(
+                    "登录成功，session 已保存在 {} 和 {}",
+                    settings.browser_profile_path,
+                    settings.browser_storage_state_path,
+                )
                 return
             if page.is_closed():
                 raise LoginRequiredError("登录完成前浏览器已关闭，请重新执行 login")

@@ -2,7 +2,7 @@
 
 import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -12,6 +12,7 @@ from xiaohongshureport.utils import (
     canonical_url,
     iso_now,
     note_id_from_url,
+    public_note_url,
 )
 from xiaohongshureport.xhs import selectors
 
@@ -164,9 +165,18 @@ def parse_note_cards(
         href = link.get("href")
         if not isinstance(href, str):
             continue
-        note_url = canonical_url(urljoin(page_url, href))
-        note_id = note_id_from_url(note_url)
+        navigation_url = urljoin(page_url, href)
         container = link.find_parent(["article", "li", "section"]) or link.parent or link
+        container_note_id = container.get("data-note-id")
+        note_id = (
+            str(container_note_id).strip()
+            if isinstance(container_note_id, str) and container_note_id.strip()
+            else note_id_from_url(navigation_url)
+        )
+        page_parts = urlsplit(page_url)
+        note_url = urlunsplit(
+            (page_parts.scheme.lower(), page_parts.netloc.lower(), f"/explore/{note_id}", "", "")
+        )
         title_element = container.select_one(selectors.NOTE_CARD_TITLE)
         title = _value(title_element) or _value(link, "title")
         cover = container.select_one(selectors.NOTE_CARD_IMAGE)
@@ -175,7 +185,7 @@ def parse_note_cards(
 
         card_account: Account | None = None
         resolved_account_id = account_id
-        if author_link and isinstance(author_link.get("href"), str):
+        if account_id is None and author_link and isinstance(author_link.get("href"), str):
             profile_url = canonical_url(urljoin(page_url, str(author_link.get("href"))))
             resolved_account_id = account_id_from_url(profile_url)
             card_account = Account(
@@ -201,7 +211,11 @@ def parse_note_cards(
             like_count=parse_count(_value(like_element)),
             source_keyword=source_keyword,
         )
-        cards[note_id] = NoteCard(note=note, account=card_account)
+        cards[note_id] = NoteCard(
+            note=note,
+            account=card_account,
+            navigation_url=navigation_url if "xsec_token=" in navigation_url else None,
+        )
     return list(cards.values())
 
 
@@ -213,13 +227,17 @@ def parse_note_detail(
     source_keyword: str | None = None,
 ) -> Note:
     soup = BeautifulSoup(html, "lxml")
-    normalized_url = canonical_url(note_url)
+    normalized_url = public_note_url(note_url)
     author = _first(soup, selectors.NOTE_AUTHOR)
     author_href = author.get("href") if author else None
-    if isinstance(author_href, str):
+    # The account/profile or search card is the ownership source of truth. A broad
+    # author-link fallback on the detail page can match recommended-content links.
+    if fallback_account_id:
+        account_id = fallback_account_id
+    elif isinstance(author_href, str):
         account_id = account_id_from_url(urljoin(normalized_url, author_href))
     else:
-        account_id = fallback_account_id
+        account_id = None
     if not account_id:
         raise ParseError("note detail parser: account identity not found")
 

@@ -30,7 +30,7 @@ cp .env.example .env
 uv run xhs-report login
 ```
 
-命令会启动正常的有头 Chromium。请在窗口中自行扫码登录；成功后 session 只保存在 `.data/xhs-profile/`。后续命令会复用此 profile。不要同时启动两个使用同一 profile 的任务。
+命令会启动正常的有头 Chromium。请在窗口中自行扫码登录；成功后 session 只保存在 `.data/xhs-profile/` 和 `.data/xhs-storage-state.json`。后续命令会复用此 profile。不要同时启动两个使用同一 profile 的任务。
 
 如果 session 失效，再次执行 `login`。程序不会读取系统 Chrome 的用户目录。
 
@@ -91,7 +91,7 @@ uv run xhs-report report --account 5b3de7ba6b58b70d04c0dd57
 - `reports/<account_id>.json`
 - SQLite `reports` 表中的最新报告
 
-报告包含账号概况、月度时间线、起号阶段、规则关键词主题变化、爆款、产品词首次观察、发布节奏、关键词关系和数据完整性。报告只表述当前采集事实和明确标注的统计规则，不把推断写成事实。
+报告包含账号概况、月度时间线、起号阶段、规则关键词主题变化、爆款、产品词首次观察、周/月发布节奏、关键词关系和数据完整性。报告只表述当前采集事实和明确标注的统计规则，不把推断写成事实。
 
 ## 6. 飞书配置
 
@@ -129,6 +129,7 @@ uv run xhs-report feishu sync
 | --- | --- | --- |
 | `.data/xhs_report.db` | SQLite 数据库 | 否 |
 | `.data/xhs-profile/` | Playwright 登录 session | 否 |
+| `.data/xhs-storage-state.json` | Playwright 会话 Cookie 备份 | 否 |
 | `reports/` | Markdown 与 JSON 报告 | 否 |
 | `.debug/<timestamp>/` | parser 失败的截图、HTML、URL | 否 |
 | `.env` | 本地配置与飞书 secret | 否 |

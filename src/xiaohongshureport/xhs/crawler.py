@@ -17,8 +17,10 @@ from xiaohongshureport.models import AccountKeywordRelation, CrawlRun, NoteCard
 from xiaohongshureport.storage import Database
 from xiaohongshureport.utils import iso_now
 from xiaohongshureport.xhs.browser import (
+    note_page_is_unavailable,
     page_height,
     persistent_context,
+    raise_if_platform_blocked,
     require_login,
     scroll_to_bottom,
     wait_for_page_ready,
@@ -86,19 +88,35 @@ class XhsCrawler:
                 detail_page = context.new_page()
                 for index, card in enumerate(cards, start=1):
                     if resume and self.database.note_detail_is_complete(card.note.note_id):
+                        notes_completed += 1
                         logger.info(
                             "[{}/{}] resume 跳过已完成笔记 {}", index, len(cards), card.note.note_id
                         )
                         continue
                     self._rate_limit()
                     try:
-                        detail_page.goto(card.note.note_url, wait_until="domcontentloaded")
+                        detail_page.goto(
+                            card.navigation_url or card.note.note_url,
+                            wait_until="domcontentloaded",
+                        )
                         detail_page.wait_for_timeout(900)
+                        raise_if_platform_blocked(detail_page)
+                        if note_page_is_unavailable(detail_page):
+                            logger.warning("笔记当前不可浏览，跳过：{}", card.note.note_url)
+                            continue
                         note = parse_note_detail(
                             detail_page.content(),
                             detail_page.url,
                             fallback_account_id=account.account_id,
                             source_keyword=card.note.source_keyword,
+                        )
+                        note = note.model_copy(
+                            update={
+                                "note_id": card.note.note_id,
+                                "account_id": account.account_id,
+                                "note_url": card.note.note_url,
+                                "source_url": card.note.note_url,
+                            }
                         )
                     except (ParseError, PlaywrightTimeoutError):
                         save_debug_artifact(
@@ -164,13 +182,28 @@ class XhsCrawler:
                         continue
                     self._rate_limit()
                     try:
-                        detail_page.goto(card.note.note_url, wait_until="domcontentloaded")
+                        detail_page.goto(
+                            card.navigation_url or card.note.note_url,
+                            wait_until="domcontentloaded",
+                        )
                         detail_page.wait_for_timeout(900)
+                        raise_if_platform_blocked(detail_page)
+                        if note_page_is_unavailable(detail_page):
+                            logger.warning("搜索笔记当前不可浏览，跳过：{}", card.note.note_url)
+                            continue
                         note = parse_note_detail(
                             detail_page.content(),
                             detail_page.url,
                             fallback_account_id=card.note.account_id,
                             source_keyword=keyword,
+                        )
+                        note = note.model_copy(
+                            update={
+                                "note_id": card.note.note_id,
+                                "account_id": card.note.account_id,
+                                "note_url": card.note.note_url,
+                                "source_url": card.note.note_url,
+                            }
                         )
                     except (ParseError, PlaywrightTimeoutError):
                         save_debug_artifact(

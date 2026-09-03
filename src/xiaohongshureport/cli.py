@@ -36,7 +36,7 @@ def _runtime() -> tuple[Settings, Database]:
 
 @app.command()
 def login() -> None:
-    """Open headed Chromium and keep the QR login session in .data/xhs-profile/."""
+    """Open headed Chromium and keep its project-local QR login session."""
 
     settings, _ = _runtime()
     try:

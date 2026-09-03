@@ -50,7 +50,10 @@ def test_generate_markdown_and_json_report(tmp_path: Path) -> None:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert "## 账号概况" in markdown
     assert "## 数据完整性" in markdown
+    assert "### 按周发文数量" in markdown
+    assert "### 按互动率 Top 20" in markdown
     assert payload["overview"]["total_notes"] == 2
+    assert "by_interaction_rate" in payload["top_notes"]
     assert (
         payload["first_observed_product_terms"][0]["statement_scope"]
         == "首次在当前采集数据中观察到"

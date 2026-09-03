@@ -1,6 +1,11 @@
 """Centralized selectors ordered from stable attributes to class fallbacks."""
 
-NOTE_LINK = 'a[href*="/explore/"], a[href*="/discovery/item/"]'
+NOTE_LINK = (
+    'section[data-note-id] a.cover[href*="xsec_token="], '
+    'section[data-note-id] a[href*="/search_result/"][href*="xsec_token="], '
+    'a[href*="/explore/"], '
+    'a[href*="/discovery/item/"]'
+)
 ACCOUNT_LINK = 'a[href*="/user/profile/"]'
 NOTE_CARD_TITLE = '[data-testid="note-card-title"], h3, h2, .title span, .title'
 NOTE_CARD_LIKE = '[data-testid="note-card-like"], [aria-label*="点赞"], .like-wrapper .count'
