@@ -5,12 +5,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from loguru import logger
-from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright
+from playwright.sync_api import BrowserContext, Error, Page, Playwright, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from xiaohongshureport.config import Settings
 from xiaohongshureport.xhs import selectors
 
 XHS_HOME_URL = "https://www.xiaohongshu.com/"
+XHS_SESSION_CHECK_URL = "https://www.xiaohongshu.com/search_result?keyword=session-check"
 
 
 class LoginRequiredError(RuntimeError):
@@ -46,21 +48,63 @@ def raise_if_platform_blocked(page: Page) -> None:
     """Stop on explicit risk/verification pages instead of attempting bypasses."""
 
     url = page.url.casefold()
-    body = page.locator("body").inner_text(timeout=3_000)
+    try:
+        body = page.locator("body").inner_text(timeout=3_000)
+    except (Error, PlaywrightTimeoutError):
+        body = ""
     if "/website-login/error" in url or "安全限制" in body or "IP存在风险" in body:
         raise PlatformBlockedError(f"小红书明确阻止当前访问：{body[:160].strip()}")
-    if "验证码" in body or "captcha" in url:
+    if any(marker in body for marker in ("请完成验证", "滑块验证", "安全验证")) or "captcha" in url:
         raise PlatformBlockedError("小红书要求验证码，请在正常页面中人工处理后再运行")
 
 
 def has_login_session(page: Page) -> bool:
     """Read the page's boolean login state without exporting any cookie values."""
 
-    result = page.evaluate(
-        "Boolean(window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user "
-        "&& window.__INITIAL_STATE__.user.loggedIn)"
-    )
+    try:
+        login_is_visible = any(
+            page.locator(marker).first.is_visible(timeout=500) for marker in selectors.LOGIN_MARKERS
+        )
+        if login_is_visible:
+            return False
+    except Error:
+        return False
+    try:
+        result = page.evaluate(
+            "Boolean(window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user "
+            "&& window.__INITIAL_STATE__.user.loggedIn "
+            "&& window.__INITIAL_STATE__.global "
+            "&& window.__INITIAL_STATE__.global.hasWebSession)"
+        )
+    except Error:
+        return False
     return result is True
+
+
+def wait_for_page_ready(page: Page, timeout_seconds: float = 20) -> None:
+    """Wait through client redirects until URL and DOM are stable for two checks."""
+
+    deadline = time.monotonic() + timeout_seconds
+    previous_url = ""
+    stable_checks = 0
+    while time.monotonic() < deadline:
+        try:
+            ready = page.evaluate(
+                "document.readyState === 'interactive' || document.readyState === 'complete'"
+            )
+            current_url = page.url
+        except Error:
+            ready = False
+            current_url = ""
+        if ready and current_url == previous_url:
+            stable_checks += 1
+            if stable_checks >= 2:
+                return
+        else:
+            stable_checks = 0
+        previous_url = current_url
+        page.wait_for_timeout(500)
+    raise PlaywrightTimeoutError("页面在超时时间内未完成导航")
 
 
 def require_login(page: Page) -> None:
@@ -74,7 +118,9 @@ def login(settings: Settings) -> None:
 
     with persistent_context(settings, headed=True) as context:
         page = context.pages[0] if context.pages else context.new_page()
-        page.goto(XHS_HOME_URL, wait_until="domcontentloaded")
+        page.goto(XHS_SESSION_CHECK_URL, wait_until="domcontentloaded")
+        wait_for_page_ready(page)
+        page.wait_for_timeout(3000)
         raise_if_platform_blocked(page)
         if has_login_session(page):
             logger.success("本地 Playwright profile 已有有效登录会话")
@@ -82,6 +128,7 @@ def login(settings: Settings) -> None:
         logger.info("请在打开的 Chromium 窗口中完成小红书扫码登录")
         deadline = time.monotonic() + settings.login_timeout_seconds
         while time.monotonic() < deadline:
+            wait_for_page_ready(page)
             raise_if_platform_blocked(page)
             if has_login_session(page):
                 page.wait_for_timeout(1500)

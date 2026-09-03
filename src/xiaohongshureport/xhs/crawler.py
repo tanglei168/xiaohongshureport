@@ -21,6 +21,7 @@ from xiaohongshureport.xhs.browser import (
     persistent_context,
     require_login,
     scroll_to_bottom,
+    wait_for_page_ready,
 )
 from xiaohongshureport.xhs.parsing import (
     ParseError,
@@ -64,8 +65,9 @@ class XhsCrawler:
             with persistent_context(self.settings, headed=headed) as context:
                 page = context.pages[0] if context.pages else context.new_page()
                 page.goto(profile_url, wait_until="domcontentloaded")
+                wait_for_page_ready(page)
+                page.wait_for_timeout(3000)
                 require_login(page)
-                page.wait_for_timeout(1500)
                 try:
                     account = parse_account(page.content(), page.url)
                 except ParseError:
@@ -142,8 +144,9 @@ class XhsCrawler:
             with persistent_context(self.settings, headed=headed) as context:
                 page = context.pages[0] if context.pages else context.new_page()
                 page.goto(search_url, wait_until="domcontentloaded")
+                wait_for_page_ready(page)
+                page.wait_for_timeout(3000)
                 require_login(page)
-                page.wait_for_timeout(1500)
                 cards = self._scroll_and_collect(
                     page,
                     lambda html: parse_note_cards(html, page.url, source_keyword=keyword),

@@ -18,6 +18,14 @@ class FakeLocator:
         assert timeout == 3_000
         return self.text
 
+    @property
+    def first(self) -> "FakeLocator":
+        return self
+
+    def is_visible(self, timeout: int) -> bool:
+        assert timeout == 500
+        return False
+
 
 class FakePage:
     def __init__(self, *, url: str, body: str = "", logged_in: bool = False) -> None:
@@ -26,7 +34,6 @@ class FakePage:
         self.logged_in = logged_in
 
     def locator(self, selector: str) -> FakeLocator:
-        assert selector == "body"
         return FakeLocator(self.body)
 
     def evaluate(self, expression: str) -> bool:
