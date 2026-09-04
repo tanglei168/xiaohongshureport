@@ -10,6 +10,7 @@ from rich.table import Table
 
 from xiaohongshureport.config import Settings, get_settings
 from xiaohongshureport.feishu import (
+    FeishuApiError,
     FeishuClient,
     FeishuConfigurationError,
     sync_database,
@@ -143,9 +144,13 @@ def report(
             settings.feishu_bitable_app_token,
         )
     ):
-        with FeishuClient(settings) as client:
-            tables = client.initialize_tables()
-            result = sync_database(database, client, tables)
+        try:
+            with FeishuClient(settings) as client:
+                tables = client.initialize_tables()
+                result = sync_database(database, client, tables)
+        except (FeishuConfigurationError, FeishuApiError) as error:
+            console.print(f"[red]{error}[/red]")
+            raise typer.Exit(1) from error
         console.print(f"飞书同步完成：{result}")
 
 
@@ -157,7 +162,7 @@ def feishu_init() -> None:
     try:
         with FeishuClient(settings) as client:
             tables = client.initialize_tables()
-    except FeishuConfigurationError as error:
+    except (FeishuConfigurationError, FeishuApiError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(1) from error
     console.print("飞书多维表格已就绪：")
@@ -174,7 +179,7 @@ def feishu_sync() -> None:
         with FeishuClient(settings) as client:
             tables = client.initialize_tables()
             result = sync_database(database, client, tables)
-    except FeishuConfigurationError as error:
+    except (FeishuConfigurationError, FeishuApiError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(1) from error
     console.print(f"飞书同步完成：{result}")

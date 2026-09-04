@@ -1,6 +1,7 @@
 """Feishu Bitable schema initialization and idempotent record synchronization."""
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,8 @@ from xiaohongshureport.models import Account, CrawlRun, Note
 from xiaohongshureport.storage import Database
 
 FEISHU_API = "https://open.feishu.cn/open-apis"
+MAX_REQUEST_ATTEMPTS = 4
+TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 
 ACCOUNT_FIELDS = (
     "账号ID",
@@ -210,7 +213,8 @@ class FeishuClient:
     def access_token(self) -> str:
         if self._access_token:
             return self._access_token
-        response = self.client.post(
+        response = self._send_with_retry(
+            "POST",
             "/auth/v3/tenant_access_token/internal",
             json={
                 "app_id": self.settings.feishu_app_id,
@@ -227,8 +231,30 @@ class FeishuClient:
     def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         headers = dict(kwargs.pop("headers", {}))
         headers["Authorization"] = f"Bearer {self.access_token()}"
-        response = self.client.request(method, path, headers=headers, **kwargs)
+        response = self._send_with_retry(method, path, headers=headers, **kwargs)
         return self._response_data(response)
+
+    def _send_with_retry(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Retry bounded transient failures without retrying ordinary API errors."""
+
+        last_error: httpx.TransportError | None = None
+        for attempt in range(MAX_REQUEST_ATTEMPTS):
+            try:
+                response = self.client.request(method, path, **kwargs)
+            except httpx.TransportError as error:
+                last_error = error
+                if attempt == MAX_REQUEST_ATTEMPTS - 1:
+                    break
+            else:
+                if response.status_code not in TRANSIENT_STATUS_CODES:
+                    return response
+                if attempt == MAX_REQUEST_ATTEMPTS - 1:
+                    return response
+            time.sleep(2**attempt)
+        raise FeishuApiError(
+            f"飞书网络请求连续失败（已重试 {MAX_REQUEST_ATTEMPTS} 次）："
+            f"{type(last_error).__name__ if last_error else '未知网络错误'}"
+        ) from last_error
 
     @staticmethod
     def _response_data(response: httpx.Response, *, unwrap: bool = True) -> dict[str, Any]:
@@ -276,7 +302,7 @@ class FeishuClient:
         created = self.request(
             "POST",
             f"/bitable/v1/apps/{self.app_token}/tables",
-            json={"table": {"name": name, "default_view_name": "默认视图"}},
+            json={"table": {"name": name}},
         )
         table = created.get("table", created)
         table_id = table.get("table_id")

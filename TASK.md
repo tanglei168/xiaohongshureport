@@ -19,13 +19,14 @@
 - [x] 执行 `uv sync` 与安装 Playwright Chromium
 - [x] 执行完整 pytest、Ruff lint 和格式检查
 - [x] 使用真实登录会话验证“哇叽星球”与“清梧的爸爸”本地链路
+- [x] 使用真实飞书配置完成四张多维表格的初始化与数据同步
 - [x] 初始化当前目录独立 Git、配置目标 origin、提交并推送
 
 ## Sprint 验收记录
 
 - `uv sync`：通过，CPython 3.12.14，锁定 35 个包。
 - `uv run playwright install chromium`：通过，Chromium 140.0.7339.16 可启动。
-- `uv run pytest`：23 项通过。
+- `uv run pytest`：24 项通过。
 - `uv run ruff check .`：通过。
 - `uv run ruff format --check .`：24 个 Python 文件格式正确。
 - `login` 已通过真实扫码验证，并确认 profile + storage state 能跨进程复用登录会话。
@@ -34,7 +35,9 @@
 - 已生成 `reports/5b3de7ba6b58b70d04c0dd57.md` 与同名 JSON；可解析时间范围为 2022-10-24 至 2025-09-02。
 - 根据真实 DOM 补充了搜索页和主页的临时详情导航；临时访问参数只在当前进程使用，不写 SQLite、报告或 Git。
 - 真实页面显示有 43 篇缺少发布时间、1 篇缺少正文、全部 114 篇未展示分享数；均按 `null` 保存，没有猜测。
+- 飞书真实初始化与同步已完成：账号 32 条、笔记 146 条、采集任务 13 条、运营报告 1 条；远端计数已通过 OpenAPI 回读核验。
+- 飞书同步按稳定 ID upsert；真实同步中发生的读取超时已验证可安全续跑，并补充了超时、限流和服务端短暂错误的有限重试。
 
 ## 当前外部阻塞
 
-- 未配置飞书应用与多维表格凭据，因此尚未执行真实飞书写入；payload 与幂等客户端已通过离线测试。
+- 无。
